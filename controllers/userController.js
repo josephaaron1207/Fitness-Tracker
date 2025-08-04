@@ -1,8 +1,8 @@
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs'); // Changed from 'bcrypt' to 'bcryptjs'
 const User = require('../models/User');
-const auth = require('../auth'); // Adjust path if needed
+const auth = require('../auth');
 
-const { errorHandler } = auth; // Destructure errorHandler
+const { errorHandler } = auth;
 
 module.exports.registerUser = async (req, res) => {
     const { firstName, lastName, email, mobileNo, password } = req.body;
