@@ -1,110 +1,135 @@
-// controllers/workoutController.js
-const Workout = require("../models/workout");
+const Workout = require("../models/Workout");
+const auth = require('../auth'); // Adjust path if needed
 
-// Add a new workout
+const { errorHandler } = auth; // Destructure errorHandler
+
+// Helper to format workout objects for consistent frontend consumption
+const formatWorkout = (workout) => {
+    if (!workout) return null;
+    return {
+        id: workout._id.toString(), // Map MongoDB _id to 'id'
+        name: workout.name,
+        duration: workout.duration,
+        dateAdded: workout.dateAdded,
+        status: workout.status,
+        userId: workout.userId.toString()
+    };
+};
+
 module.exports.addWorkout = async (req, res) => {
-  try {
-    const { name, duration } = req.body;
-    const userId = req.user.userId; // Get user ID from the token
+    const { name, duration, status } = req.body; // status is now expected from frontend
 
-    // Check if userId is present from the token
-    if (!userId) {
-        return res.status(401).json({ message: "Authentication failed. User ID not found in token." });
+    if (!name || !duration) {
+        return res.status(400).send({ message: 'Workout name and duration are required.' });
     }
 
-    const newWorkout = new Workout({
-      name,
-      duration,
-      userId,
-    });
+    try {
+        let newWorkout = new Workout({
+            name: name,
+            duration: duration,
+            status: status || "Pending", // Use provided status or default to "Pending"
+            userId: req.user.id // userId from authenticated user
+        });
 
-    await newWorkout.save();
-    res.status(201).json({ message: "Workout added successfully", workout: newWorkout });
-  } catch (error) {
-    // Log the full error to the console for debugging
-    console.error("Error creating workout:", error);
-
-    // Send a more detailed error message to the client
-    res.status(500).json({
-      message: "Error adding workout",
-      details: error.message, // Send the specific error message from Mongoose or other sources
-      // You can also add more details from the error object if needed
-      // fullError: error
-    });
-  }
+        const savedWorkout = await newWorkout.save();
+        res.status(201).send({
+            message: "Workout successfully added",
+            workout: formatWorkout(savedWorkout) // Format the saved workout
+        });
+    } catch (error) {
+        console.error("Error in saving the workout:", error);
+        errorHandler(error, req, res);
+    }
 };
 
-// Get all workouts for the authenticated user
 module.exports.getMyWorkouts = async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const workouts = await Workout.find({ userId });
+    try {
+        const workouts = await Workout.find({ userId: req.user.id });
+        const formattedWorkouts = workouts.map(formatWorkout); // Format all workouts
 
-    res.status(200).json(workouts);
-  } catch (error) {
-    res.status(500).json({ message: "Error retrieving workouts", error });
-  }
+        if (formattedWorkouts.length > 0) {
+            return res.status(200).send(formattedWorkouts); // Send array directly
+        } else {
+            return res.status(200).send([]); // Send empty array if no workouts found
+        }
+    } catch (error) {
+        console.error("Error finding workouts:", error);
+        errorHandler(error, req, res);
+    }
 };
 
-// Update a workout
 module.exports.updateWorkout = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, duration } = req.body;
-    const userId = req.user.userId;
+    const { name, duration, status } = req.body;
+    const workoutId = req.params.id;
 
-    const updatedWorkout = await Workout.findOneAndUpdate(
-      { _id: id, userId }, // Ensure the workout belongs to the user
-      { name, duration },
-      { new: true, runValidators: true } // Return the updated document and run schema validators
-    );
-
-    if (!updatedWorkout) {
-      return res.status(404).json({ message: "Workout not found or you don't have permission" });
+    if (!name || !duration || !status) {
+        return res.status(400).send({ message: 'Workout name, duration, and status are required for update.' });
     }
 
-    res.status(200).json({ message: "Workout updated successfully", workout: updatedWorkout });
-  } catch (error) {
-    res.status(500).json({ message: "Error updating workout", error });
-  }
+    try {
+        const updatedWorkout = await Workout.findOneAndUpdate(
+            { _id: workoutId, userId: req.user.id }, // Find by workout ID and user ID
+            { name, duration, status },
+            { new: true } // Return the updated document
+        );
+
+        if (!updatedWorkout) {
+            return res.status(404).send({ error: 'Workout not found or not authorized.' });
+        }
+        res.status(200).send({
+            message: 'Workout updated successfully',
+            updatedWorkout: formatWorkout(updatedWorkout) // Format the updated workout
+        });
+    } catch (error) {
+        console.error("Error in updating a workout:", error);
+        if (error.name === 'CastError' && error.path === '_id') {
+            return res.status(400).send({ error: 'Invalid Workout ID format.' });
+        }
+        errorHandler(error, req, res);
+    }
 };
 
-// Delete a workout
 module.exports.deleteWorkout = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user.userId;
+    const workoutId = req.params.id;
 
-    const deletedWorkout = await Workout.findOneAndDelete({ _id: id, userId });
+    try {
+        const deletedResult = await Workout.deleteOne({ _id: workoutId, userId: req.user.id });
 
-    if (!deletedWorkout) {
-      return res.status(404).json({ message: "Workout not found or you don't have permission" });
+        if (deletedResult.deletedCount < 1) {
+            return res.status(404).send({ error: 'Workout not found or not authorized to delete.' });
+        }
+        res.status(200).send({ message: 'Workout deleted successfully' });
+    } catch (error) {
+        console.error("Error in deleting a workout:", error);
+        if (error.name === 'CastError' && error.path === '_id') {
+            return res.status(400).send({ error: 'Invalid Workout ID format.' });
+        }
+        errorHandler(error, req, res);
     }
-
-    res.status(200).json({ message: "Workout deleted successfully", workout: deletedWorkout });
-  } catch (error) {
-    res.status(500).json({ message: "Error deleting workout", error });
-  }
 };
 
-// Update workout status to 'completed'
 module.exports.completeWorkoutStatus = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user.userId;
+    const workoutId = req.params.id;
 
-    const completedWorkout = await Workout.findOneAndUpdate(
-      { _id: id, userId },
-      { status: "completed" },
-      { new: true }
-    );
+    try {
+        const updatedWorkout = await Workout.findOneAndUpdate(
+            { _id: workoutId, userId: req.user.id },
+            { status: "Completed" }, // Set status to "Completed"
+            { new: true }
+        );
 
-    if (!completedWorkout) {
-      return res.status(404).json({ message: "Workout not found or you don't have permission" });
+        if (!updatedWorkout) {
+            return res.status(404).send({ error: 'Workout not found or not authorized.' });
+        }
+        res.status(200).send({
+            message: 'Workout marked as completed',
+            updatedWorkout: formatWorkout(updatedWorkout) // Format the updated workout
+        });
+    } catch (error) {
+        console.error("Error completing workout:", error);
+        if (error.name === 'CastError' && error.path === '_id') {
+            return res.status(400).send({ error: 'Invalid Workout ID format.' });
+        }
+        errorHandler(error, req, res);
     }
-
-    res.status(200).json({ message: "Workout status updated to completed", workout: completedWorkout });
-  } catch (error) {
-    res.status(500).json({ message: "Error updating workout status", error });
-  }
 };

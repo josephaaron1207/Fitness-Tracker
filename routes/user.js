@@ -1,12 +1,18 @@
-// routes/user.js
-const express = require("express");
-const router = express.Router();
-const userController = require("../controllers/userController");
-const { verifyToken } = require("./authMiddleware");
+const express = require('express');
+const userController = require('../controllers/userController');
+const { verify, isLoggedIn } = require("../auth");
 
-// Aligning with your fitnessApp.json endpoints
+const router = express.Router();
+
 router.post("/register", userController.registerUser);
+
 router.post("/login", userController.loginUser);
-router.get("/profile", verifyToken, userController.getProfile); // Protected route
+
+// Add this console.log to check the value of userController.getProfile
+console.log("Value of userController.getProfile:", userController.getProfile);
+// Add this console.log to check the value of verify
+console.log("Value of verify:", verify); // This is the new log
+
+router.get("/details", verify, userController.getProfile); // This is line 14
 
 module.exports = router;

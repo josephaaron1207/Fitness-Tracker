@@ -1,16 +1,31 @@
-// models/user.js
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
-  email: {
-    type: String,
-    required: [true, "Email is required"],
-    unique: true,
-  },
-  password: {
-    type: String,
-    required: [true, "Password is required"],
-  },
+    firstName: {
+        type: String,
+        required: [true, 'First Name is Required']
+    },
+    lastName: {
+        type: String,
+        required: [true, 'Last Name is Required']
+    },
+    email: {
+        type: String,
+        required: [true, 'Email is Required'],
+        unique: true // Ensure emails are unique
+    },
+    password: {
+        type: String,
+        required: [true, 'Password is Required']
+    },
+    isAdmin: {
+        type: Boolean,
+        default: false
+    },
+    mobileNo: {
+        type: String,
+        required: [true, 'Mobile Number is Required']
+    }
 });
 
-module.exports = mongoose.model("User", userSchema);
+module.exports = mongoose.model('User', userSchema);

@@ -1,42 +1,43 @@
-// index.js
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
-require("dotenv").config();
+require('dotenv').config(); // Load environment variables
+
+const userRoutes = require("./routes/user");
+const workoutRoutes = require("./routes/workoutRoutes");
 
 const app = express();
-const port = process.env.PORT || 4000;
 
-// Database connection
-mongoose.connect(process.env.MONGODB_STRING, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
-const db = mongoose.connection;
-db.on("error", console.error.bind(console, "connection error:"));
-db.once("open", () => console.log("Connected to MongoDB"));
+const corsOptions = {
+    // Allow requests from your frontend's development server (Vite default)
+    // and potentially your deployed frontend URL.
+    origin: ['http://localhost:5173', 'https://your-deployed-frontend-url.com'], // <--- IMPORTANT: Add your deployed frontend URL here
+    credentials: true,
+    optionsSuccessStatus: 200
+};
 
-// Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(cors());
+app.use(express.json()); // Enable JSON body parsing
+app.use(express.urlencoded({ extended: true })); // Enable URL-encoded body parsing
+app.use(cors(corsOptions)); // Apply CORS middleware
 
-// Routes Middleware
-const workoutRoutes = require("./routes/workout");
-const userRoutes = require("./routes/user");
+// Connect to MongoDB Atlas
+mongoose.connect(process.env.MONGODB_STRING)
+    .then(() => console.log('Now connected to MongoDB Atlas'))
+    .catch(err => console.error('MongoDB connection error:', err));
 
-app.use("/workouts", workoutRoutes);
+// Route Middlewares
 app.use("/users", userRoutes);
+app.use("/workouts", workoutRoutes);
 
-// Basic route for testing
-app.get("/", (req, res) => {
-  res.send("Fitness Tracker API is running!");
+// Basic route for testing server status
+app.get('/', (req, res) => {
+    res.send('Fitness Tracker API is running!');
 });
 
-if (require.main === module) {
-  app.listen(port, () => {
-    console.log(`API is now online on port ${port}`);
-  });
-}
+// Start the server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`API is now online on port ${PORT}`);
+});
 
-module.exports = { app, mongoose };
+module.exports = { app, mongoose }; // Export app for testing or other uses

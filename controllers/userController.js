@@ -1,69 +1,95 @@
-// controllers/userController.js
-const User = require("../models/user");
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
+const bcrypt = require('bcrypt');
+const User = require('../models/User');
+const auth = require('../auth'); // Adjust path if needed
 
-// User registration
+const { errorHandler } = auth; // Destructure errorHandler
+
 module.exports.registerUser = async (req, res) => {
-  try {
-    const { email, password } = req.body;
+    const { firstName, lastName, email, mobileNo, password } = req.body;
 
-    // Hash the password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = new User({
-      email,
-      password: hashedPassword,
-    });
-
-    await newUser.save();
-    res.status(201).json({ message: "User registered successfully" });
-  } catch (error) {
-    if (error.code === 11000) {
-      return res.status(400).json({ message: "Email already exists" });
+    // Basic validation
+    if (!email || !password || !firstName || !lastName || !mobileNo) {
+        return res.status(400).send({ message: 'All fields are required.' });
     }
-    res.status(500).json({ message: "Error registering user", error });
-  }
+    if (!email.includes("@")) {
+        return res.status(400).send({ message: 'Email invalid' });
+    }
+    if (mobileNo.length !== 11) { // Assuming 11 digits for mobile number
+        return res.status(400).send({ message: 'Mobile number invalid (must be 11 digits)' });
+    }
+    if (password.length < 8) {
+        return res.status(400).send({ message: 'Password must be at least 8 characters long' });
+    }
+
+    try {
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(409).send({ message: 'Email already in use' });
+        }
+
+        const newUser = new User({
+            firstName,
+            lastName,
+            email,
+            mobileNo,
+            password: bcrypt.hashSync(password, 10) // Hash the password
+        });
+
+        await newUser.save();
+        res.status(201).send({ message: 'Registered successfully' });
+    } catch (error) {
+        console.error("Error during user registration:", error);
+        errorHandler(error, req, res); // Use the centralized error handler
+    }
 };
 
-// User login
 module.exports.loginUser = async (req, res) => {
-  try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ message: "Invalid credentials" });
+    if (!email || !password) {
+        return res.status(400).send({ message: 'Email and password are required.' });
+    }
+    if (!email.includes("@")) {
+        return res.status(400).send({ message: 'Invalid email format' });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: "Invalid credentials" });
+    try {
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).send({ message: 'No email found' });
+        }
+
+        const isPasswordCorrect = bcrypt.compareSync(password, user.password);
+        if (!isPasswordCorrect) {
+            return res.status(401).send({ message: 'Incorrect email or password' });
+        }
+
+        // Create and return JWT token
+        const accessToken = auth.createAccessToken(user);
+        res.status(200).send({
+            message: 'User logged in successfully',
+            access: accessToken, // Send the token as 'access' as per your frontend expectation
+            userId: user._id.toString() // Also send the user ID for convenience
+        });
+    } catch (error) {
+        console.error("Error during user login:", error);
+        errorHandler(error, req, res);
     }
-
-    // Generate a JWT token
-    const token = jwt.sign(
-      { userId: user._id, email: user.email },
-      process.env.JWT_SECRET_KEY,
-      { expiresIn: "1h" }
-    );
-
-    res.status(200).json({ message: "Login successful", token });
-  } catch (error) {
-    res.status(500).json({ message: "Error logging in", error });
-  }
 };
 
-// Get user details (requires authentication)
 module.exports.getProfile = async (req, res) => {
-  try {
-    // req.user is populated by the authentication middleware
-    const user = await User.findById(req.user.userId).select("-password"); // Exclude password from the response
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
+    try {
+        // req.user.id is populated by the 'verify' middleware
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).send({ message: 'User not found.' });
+        }
+        // Remove password before sending to frontend
+        const userProfile = user.toObject(); // Convert Mongoose document to plain object
+        delete userProfile.password;
+        return res.status(200).send(userProfile);
+    } catch (error) {
+        console.error("Error fetching user profile:", error);
+        errorHandler(error, req, res);
     }
-    res.status(200).json(user);
-  } catch (error) {
-    res.status(500).json({ message: "Error retrieving user profile", error });
-  }
 };
